@@ -9,6 +9,13 @@ const revealObserver = new IntersectionObserver(
   { threshold: 0.12 }
 );
 
+const siteLogo = document.querySelector(".logo");
+
+siteLogo?.addEventListener("click", (event) => {
+  event.preventDefault();
+  window.location.reload();
+});
+
 document.querySelectorAll(".topics .topic").forEach((element, index) => {
   element.style.setProperty("--delay", `${index * 70}ms`);
 });
@@ -34,12 +41,9 @@ const photoLoop = document.querySelector(".photo-loop");
 if (photoLoop) {
   const photoLoopTrack = photoLoop.querySelector(".photo-loop-track");
   const photoLoopSet = photoLoop.querySelector(".photo-loop-set");
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let dragStartX = 0;
   let dragStartScroll = 0;
-  let resumeAfter = 0;
-  let previousFrame = performance.now();
-  let autoplayWasActive = false;
+  let resumeTimer;
 
   const createLoopClone = () => {
     const clone = photoLoopSet.cloneNode(true);
@@ -51,46 +55,40 @@ if (photoLoop) {
   photoLoopTrack.prepend(createLoopClone());
   photoLoopTrack.append(createLoopClone());
 
+  const syncLoopDistance = () => {
+    photoLoopTrack.style.setProperty("--loop-distance", `-${photoLoopSet.offsetWidth}px`);
+  };
+
+  syncLoopDistance();
+  new ResizeObserver(syncLoopDistance).observe(photoLoopSet);
+
   requestAnimationFrame(() => {
     photoLoop.scrollLeft = photoLoopSet.offsetWidth;
+    photoLoop.classList.add("is-ready");
   });
 
   const pauseAutoplay = (duration = 2800) => {
-    resumeAfter = performance.now() + duration;
-    photoLoop.classList.remove("is-autoplaying");
-    autoplayWasActive = false;
+    window.clearTimeout(resumeTimer);
+    photoLoop.classList.add("is-paused");
+    resumeTimer = window.setTimeout(() => {
+      if (!photoLoop.classList.contains("is-interacting")) {
+        photoLoop.classList.remove("is-paused");
+      }
+    }, duration);
   };
 
-  const runAutoplay = (timestamp) => {
+  const normalizeLoopPosition = () => {
     const loopWidth = photoLoopSet.offsetWidth;
-    const elapsed = Math.min(timestamp - previousFrame, 48);
-
-    if (loopWidth > 0) {
-      if (photoLoop.scrollLeft >= loopWidth * 2) photoLoop.scrollLeft -= loopWidth;
-      if (photoLoop.scrollLeft <= 0) photoLoop.scrollLeft += loopWidth;
-
-      const autoplayIsActive = !reducedMotion.matches && timestamp >= resumeAfter && !photoLoop.classList.contains("is-interacting");
-
-      if (autoplayIsActive !== autoplayWasActive) {
-        photoLoop.classList.toggle("is-autoplaying", autoplayIsActive);
-        autoplayWasActive = autoplayIsActive;
-      }
-
-      if (autoplayIsActive) {
-        photoLoop.scrollLeft += elapsed * 0.026;
-      }
-    }
-
-    previousFrame = timestamp;
-    requestAnimationFrame(runAutoplay);
+    if (loopWidth === 0) return;
+    if (photoLoop.scrollLeft < loopWidth * 0.35) photoLoop.scrollLeft += loopWidth;
+    if (photoLoop.scrollLeft > loopWidth * 1.65) photoLoop.scrollLeft -= loopWidth;
   };
-
-  requestAnimationFrame(runAutoplay);
 
   const stopInteraction = (event) => {
     if (!photoLoop.classList.contains("is-interacting")) return;
     photoLoop.classList.remove("is-interacting");
     photoLoop.classList.remove("is-dragging");
+    normalizeLoopPosition();
     pauseAutoplay();
     if (event.pointerId !== undefined && photoLoop.hasPointerCapture(event.pointerId)) {
       photoLoop.releasePointerCapture(event.pointerId);
